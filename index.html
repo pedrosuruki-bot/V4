@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clip Factory</title>
+<style>
+:root{color-scheme:dark;--bg:#07090d;--card:#10141b;--line:#202733;--text:#f5f7fa;--muted:#8e98a8;--accent:#7c5cff;--good:#39d98a;--warn:#ffbf69;--bad:#ff6678}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#07090d,#0b0e14);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+main{max-width:1050px;margin:auto;padding:18px 14px 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.brand{font-weight:800;font-size:22px}.sub{color:var(--muted);font-size:12px;margin-top:3px}.dot{width:9px;height:9px;border-radius:50%;background:var(--warn);display:inline-block;margin-right:6px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric,.panel{background:rgba(16,20,27,.94);border:1px solid var(--line);border-radius:16px}.metric{padding:14px}.metric b{font-size:25px;display:block}.metric span{font-size:12px;color:var(--muted)}
+.panel{padding:16px;margin-top:12px}.panel h2{font-size:15px;margin:0 0 12px}
+.controls{display:grid;grid-template-columns:1fr 130px 130px;gap:9px}input,select,button{font:inherit}input,select{width:100%;background:#0a0d12;color:var(--text);border:1px solid var(--line);border-radius:11px;padding:12px}button{border:0;border-radius:11px;padding:11px 14px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#1a202a}button:disabled{opacity:.45;cursor:not-allowed}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.status{color:var(--muted);font-size:12px;margin-top:10px;min-height:17px}
+.list{display:grid;gap:9px}.video{display:grid;grid-template-columns:150px 1fr auto;gap:12px;padding:10px;border:1px solid var(--line);border-radius:13px;background:#0c1016}.thumb{width:150px;height:84px;object-fit:cover;border-radius:9px;background:#161b24}.title{font-weight:700;font-size:14px;line-height:1.3}.meta{font-size:11px;color:var(--muted);margin-top:5px}.score{font-size:18px;font-weight:800}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 7px;font-size:10px;color:var(--muted);margin-top:7px}.empty{padding:30px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
+small{color:var(--muted)}a{color:#b9adff;text-decoration:none}
+@media(max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}.controls{grid-template-columns:1fr}.video{grid-template-columns:100px 1fr}.thumb{width:100px;height:70px}.video .actions{grid-column:1/-1;display:flex;gap:7px}.video .actions button{flex:1}}
+</style>
+</head>
+<body>
+<main>
+<div class="top"><div><div class="brand">Clip Factory</div><div class="sub">YouTube discovery · análise · fila de clips</div></div><div><span class="dot" id="dot"></span><small id="state">Não configurado</small></div></div>
+
+<div class="grid">
+<div class="metric"><b id="mVideos">0</b><span>Vídeos encontrados</span></div>
+<div class="metric"><b id="mReview">0</b><span>Em revisão</span></div>
+<div class="metric"><b id="mApproved">0</b><span>Aprovados</span></div>
+<div class="metric"><b id="mRejected">0</b><span>Rejeitados</span></div>
+</div>
+
+<section class="panel">
+<h2>1. Descoberta</h2>
+<div class="controls">
+<input id="apiKey" type="password" placeholder="YouTube Data API key">
+<select id="region"><option value="PT">Portugal</option><option value="BR">Brasil</option></select>
+<select id="hours"><option value="6">Últimas 6h</option><option value="24" selected>Últimas 24h</option><option value="48">Últimas 48h</option><option value="72">Últimas 72h</option></select>
+</div>
+<div class="controls" style="margin-top:9px">
+<input id="queries" value="entrevista,polémica,notícias,curiosidades,casos reais,debate,viral,portugal" placeholder="Temas separados por vírgula">
+<button id="search">Buscar vídeos</button>
+<select id="order"><option value="date">Mais recentes</option><option value="viewCount">Mais vistos</option></select>
+</div>
+<div class="toolbar"><button class="secondary" id="save">Guardar configuração neste iPhone</button><button class="secondary" id="clear">Limpar chave</button></div>
+<div class="status" id="status">Aguardando busca.</div>
+</section>
+
+<section class="panel">
+<h2>2. Vídeos detetados</h2>
+<div id="list" class="list"><div class="empty">Ainda não há resultados. A humanidade inventou APIs, então vamos obrigá-las a trabalhar.</div></div>
+</section>
+
+<section class="panel">
+<h2>Como esta versão funciona</h2>
+<small>Esta página é estática e pode ser hospedada. A busca usa diretamente a YouTube Data API no navegador, portanto a chave fica no dispositivo. Não coloque aqui uma chave do OpusClip. O próximo passo é ligar um backend seguro para Discovery → análise → OpusClip → revisão, sem expor segredos.</small>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let items=[];
+function fmt(n){return Intl.NumberFormat('pt-PT',{notation:'compact',maximumFractionDigits:1}).format(Number(n||0))}
+function score(v){
+ const age=Math.max(1,(Date.now()-new Date(v.publishedAt))/3600000);
+ const views=Number(v.viewCount||0);
+ const velocity=views/age;
+ let s=Math.min(100,velocity/80)+Math.min(35,views/50000);
+ if((v.title||'').length>25)s+=8;
+ const risky=/netflix|filme|episódio|música oficial|music video|jogo completo|transmissão completa|full movie/i.test(v.title||'');
+ if(risky)s-=35;
+ return Math.max(0,Math.min(100,Math.round(s)));
+}
+function render(){
+ $('mVideos').textContent=items.length;
+ $('mReview').textContent=items.filter(x=>x.status==='REVIEW').length;
+ $('mApproved').textContent=items.filter(x=>x.status==='APPROVED').length;
+ $('mRejected').textContent=items.filter(x=>x.status==='REJECTED').length;
+ if(!items.length){$('list').innerHTML='<div class="empty">Nenhum resultado.</div>';return}
+ $('list').innerHTML=items.map((v,i)=>`<article class="video">
+<img class="thumb" src="${v.thumb}" loading="lazy">
+<div><div class="title">${esc(v.title)}</div><div class="meta">${esc(v.channel)} · ${new Date(v.publishedAt).toLocaleString('pt-PT')} · ${fmt(v.viewCount)} views</div><span class="pill">${v.status}</span></div>
+<div class="actions"><div class="score">${v.score}/100</div><button onclick="openYT(${i})" class="secondary">YouTube</button></div>
+</article>`).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function openYT(i){window.open('https://www.youtube.com/watch?v='+items[i].id,'_blank')}
+function load(){const k=localStorage.getItem('yt_key');if(k)$('apiKey').value=k;const r=localStorage.getItem('yt_region');if(r)$('region').value=r}
+$('save').onclick=()=>{const k=$('apiKey').value.trim();if(!k)return $('status').textContent='Introduza a chave do YouTube primeiro.';localStorage.setItem('yt_key',k);localStorage.setItem('yt_region',$('region').value);$('status').textContent='Configuração guardada apenas neste dispositivo.'}
+$('clear').onclick=()=>{localStorage.removeItem('yt_key');$('apiKey').value='';$('status').textContent='Chave removida do dispositivo.'}
+$('search').onclick=async()=>{
+ const key=$('apiKey').value.trim(); if(!key){$('status').textContent='Falta a YouTube Data API key.';return}
+ const hours=Number($('hours').value), region=$('region').value, order=$('order').value;
+ const qs=$('queries').value.split(',').map(x=>x.trim()).filter(Boolean);
+ $('search').disabled=true;$('status').textContent='A pesquisar no YouTube…';
+ try{
+  const publishedAfter=new Date(Date.now()-hours*3600000).toISOString();
+  const all=[];
+  for(const q of qs){
+   const p=new URLSearchParams({part:'snippet',type:'video',maxResults:'25',order,q,publishedAfter,regionCode:region,relevanceLanguage:'pt',key});
+   const r=await fetch('https://www.googleapis.com/youtube/v3/search?'+p);
+   const d=await r.json(); if(!r.ok)throw new Error(d.error?.message||'Erro na YouTube API');
+   for(const x of d.items||[])all.push({id:x.id.videoId,title:x.snippet.title,channel:x.snippet.channelTitle,publishedAt:x.snippet.publishedAt,thumb:x.snippet.thumbnails?.high?.url||x.snippet.thumbnails?.medium?.url});
+  }
+  const ids=[...new Set(all.map(x=>x.id))].slice(0,50);
+  if(ids.length){
+   const p=new URLSearchParams({part:'statistics,contentDetails',id:ids.join(','),key});
+   const r=await fetch('https://www.googleapis.com/youtube/v3/videos?'+p);const d=await r.json();if(!r.ok)throw new Error(d.error?.message||'Erro ao obter estatísticas');
+   const stats=new Map((d.items||[]).map(x=>[x.id,x]));
+   items=all.filter(x=>stats.has(x.id)).map(x=>{const s=stats.get(x.id);const v={...x,viewCount:s.statistics?.viewCount||0,likeCount:s.statistics?.likeCount||0,commentCount:s.statistics?.commentCount||0};v.score=score(v);v.status=v.score>=75?'REVIEW':'REVIEW';return v}).sort((a,b)=>b.score-a.score);
+  } else items=[];
+  $('status').textContent='Busca concluída: '+items.length+' vídeos analisados.';
+  render();
+ }catch(e){$('status').textContent='Erro: '+e.message}
+ finally{$('search').disabled=false}
+};
+load();render();
+</script>
+</body></html>
